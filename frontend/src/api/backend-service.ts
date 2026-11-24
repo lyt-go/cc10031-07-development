@@ -1,6 +1,12 @@
 import { request } from './client'
 import { moduleMeta } from '@/data/modules'
 import type { ActionResult, EntryRow, OverviewResult, PageResult } from '@/data/types'
+import type {
+  HandoverList,
+  HandoverSummary,
+  Readback,
+  Reconcile,
+} from '@/data/handover'
 
 export { moduleMeta }
 
@@ -58,4 +64,53 @@ export async function loadOverview(): Promise<OverviewResult> {
   const response = await request('/api/overview')
   if (!response.ok) throw new Error('运营概览读取失败')
   return await response.json()
+}
+
+async function handoverJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await request(path, init)
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null)
+    const message =
+      typeof detail?.detail === 'string'
+        ? detail.detail
+        : detail?.detail?.message ?? '交接状态读取失败'
+    throw new Error(message)
+  }
+  return (await response.json()) as T
+}
+
+export async function listHandovers(point?: string): Promise<HandoverList> {
+  const query = point ? `?point=${encodeURIComponent(point)}` : ''
+  return await handoverJson<HandoverList>(`/api/handovers${query}`)
+}
+
+export async function getHandover(handoverNo: string): Promise<{ handover: HandoverSummary }> {
+  return await handoverJson(`/api/handovers/${encodeURIComponent(handoverNo)}`)
+}
+
+export async function readBackHandover(
+  handoverNo: string,
+  segment?: string,
+): Promise<Readback> {
+  const query = segment ? `?segment=${encodeURIComponent(segment)}` : ''
+  return await handoverJson(`/api/handovers/${encodeURIComponent(handoverNo)}/readback${query}`)
+}
+
+export async function reconcileHandover(handoverNo: string): Promise<Reconcile> {
+  return await handoverJson(`/api/handovers/${encodeURIComponent(handoverNo)}/reconcile`, {
+    method: 'POST',
+  })
+}
+
+export async function evictEventDay(
+  handoverNo: string,
+  options: { failAfter?: number; actor?: string } = {},
+): Promise<{ tier: string; archived_segments: string[]; skipped_segments: Record<string, string> }> {
+  const body: Record<string, unknown> = {}
+  if (options.failAfter !== undefined) body.fail_after = options.failAfter
+  if (options.actor) body.actor = options.actor
+  return await handoverJson(`/api/handovers/${encodeURIComponent(handoverNo)}/evict`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }

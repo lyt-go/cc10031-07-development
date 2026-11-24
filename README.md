@@ -77,5 +77,31 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
-领域：数据工程
+## 事件日交接与按日迁冷
+
+序列索引的每个分区对应一个实际采样日（事件日），以交接号 `HO-<测点>-<事件日>` 为稳定标识。
+首个归并窗口归「前段」（旧班交接读取的部分），其余窗口归「末段」。
+
+交接状态落在 `data/handover/<交接号>.json`，冷区归档与写入检查点落在 `data/tier_storage/`。
+状态文件与检查点都走「临时文件 + 原子替换」，冷区记录逐条追加并推进检查点，
+进程中断后可用原交接号续写，不会重写已归档的分段。
+
+| 接口 | 作用 |
+| --- | --- |
+| `POST /api/series_index/{id}/handover/windows` | 登记归并窗口；`late_report` 标记封存后的迟报 |
+| `POST /api/series_index/{id}/handover/seal` | 新日首个归并窗口确认，旧日封存并关联新旧交接号 |
+| `POST /api/series_index/{id}/handover/verify` | 按前段或末段独立核验 |
+| `POST /api/series_index/{id}/handover/correction` | 登记末段更正，标记待重算 |
+| `POST /api/series_index/{id}/handover/recompute` | 获准后完成更正重算，进版为新的发布口径 |
+| `GET /api/handovers[?point=]` | 列出事件日交接状态 |
+| `GET /api/handovers/{交接号}/readback[?segment=前段]` | 从冷热分层直接读回，标出实际落在冷区还是热区 |
+| `POST /api/handovers/{交接号}/reconcile` | 按整日核对发布值、读回值与待重写分段 |
+| `POST /api/handovers/{交接号}/evict` | 把已确认覆盖的分段迁冷；`fail_after` 可模拟写入中断 |
+| `GET /api/handovers/{交接号}/checkpoint` | 查询冷区写入检查点 |
+
+迁冷只归档已确认覆盖的分段：因迟报待重写或更正待重算的末段继续留在热区，
+事件日整体标为 `partial_cold`，并在读回结果里给出等待原因。
+前端在「序列索引」和「冷热分层」两个模块的页脚下方展示同一块交接面板。
+
+## 约定
 子方向：数据采集、爬虫与RPA

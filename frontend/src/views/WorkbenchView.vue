@@ -90,6 +90,8 @@
       <span>共 {{ total }} 条{{ meta.name }}记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <HandoverPanel v-if="showHandoverPanel" />
   </section>
 </template>
 
@@ -104,9 +106,14 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import HandoverPanel from '@/views/HandoverPanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
+// 序列索引登记交接状态，冷热分层负责按事件日迁冷读回，两个模块共享这块面板。
+const showHandoverPanel = computed(() =>
+  ['series_index', 'tier_storage'].includes(meta.key),
+)
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
